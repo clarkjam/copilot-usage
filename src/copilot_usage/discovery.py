@@ -59,6 +59,32 @@ def discover_jsonl_files(
     return results
 
 
+def discover_legacy_json_files(
+    storage_root: Path | None = None,
+) -> list[tuple[str, str, Path]]:
+    """Find all chatSessions/*.json files (legacy, pre-Feb 2026).
+
+    Returns list of (workspace_id, workspace_path, json_path).
+    """
+    root = storage_root or VSCODE_STORAGE_ROOT
+    results: list[tuple[str, str, Path]] = []
+    if not root.exists():
+        return results
+
+    for workspace_dir in root.iterdir():
+        if not workspace_dir.is_dir():
+            continue
+        sessions_dir = workspace_dir / "chatSessions"
+        if not sessions_dir.is_dir():
+            continue
+        workspace_id, workspace_path = resolve_workspace(workspace_dir)
+        for json_file in sessions_dir.glob("*.json"):
+            results.append((workspace_id, workspace_path, json_file))
+
+    log.info("Discovered %d legacy JSON files across %d workspaces", len(results), len({r[0] for r in results}))
+    return results
+
+
 def get_changed_files(
     con: duckdb.DuckDBPyConnection,
     candidates: list[tuple[str, str, Path]],

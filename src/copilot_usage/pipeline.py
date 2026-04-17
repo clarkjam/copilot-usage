@@ -10,11 +10,12 @@ from copilot_usage.aggregator import rebuild_aggregates
 from copilot_usage.badges import export_badges
 from copilot_usage.discovery import (
     discover_jsonl_files,
+    discover_legacy_json_files,
     get_changed_files,
     update_file_index,
 )
 from copilot_usage.ingest import ingest_parsed_file
-from copilot_usage.parser import parse_jsonl
+from copilot_usage.parser import parse_jsonl, parse_legacy_json
 
 log = logging.getLogger(__name__)
 
@@ -27,8 +28,10 @@ def run_scan(con: duckdb.DuckDBPyConnection) -> dict:
     con.execute("INSERT INTO scan_runs (files_checked, files_parsed) VALUES (0, 0)")
     scan_id = con.execute("SELECT MAX(scan_id) FROM scan_runs").fetchone()[0]
 
-    # 2. Discover all JSONL files
-    all_files = discover_jsonl_files()
+    # 2. Discover all JSONL files + legacy JSON files
+    all_jsonl = discover_jsonl_files()
+    all_legacy = discover_legacy_json_files()
+    all_files = all_jsonl + all_legacy
 
     # 3. Upsert workspaces (even if no changed files, we still want the mapping)
     seen_ws: set[str] = set()
@@ -49,7 +52,10 @@ def run_scan(con: duckdb.DuckDBPyConnection) -> dict:
     total_events = 0
     parsed_paths = []
     for ws_id, ws_path, path in changed:
-        pf = parse_jsonl(path, ws_id, ws_path)
+        if path.suffix == ".json":
+            pf = parse_legacy_json(path, ws_id, ws_path)
+        else:
+            pf = parse_jsonl(path, ws_id, ws_path)
         n = ingest_parsed_file(con, pf)
         total_events += n
         parsed_paths.append(path)
@@ -76,6 +82,8 @@ def run_scan(con: duckdb.DuckDBPyConnection) -> dict:
     stats = {
         "scan_id": scan_id,
         "files_total": len(all_files),
+        "files_jsonl": len(all_jsonl),
+        "files_legacy_json": len(all_legacy),
         "files_parsed": len(changed),
         "files_deleted": len(deleted),
         "events_ingested": total_events,

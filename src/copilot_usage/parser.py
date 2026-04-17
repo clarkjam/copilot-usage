@@ -96,6 +96,99 @@ def parse_jsonl(
     return pf
 
 
+def parse_legacy_json(
+    json_path: Path,
+    workspace_id: str,
+    workspace_path: str,
+) -> ParsedFile:
+    """Parse a legacy (pre-Feb 2026) single-object .json session file."""
+    pf = ParsedFile(
+        source_path=json_path,
+        workspace_id=workspace_id,
+        workspace_path=workspace_path,
+    )
+
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("Cannot read legacy JSON %s: %s", json_path, exc)
+        return pf
+
+    if not isinstance(data, dict):
+        return pf
+
+    session_id = data.get("sessionId", "") or json_path.stem
+    creation_date = data.get("creationDate")
+
+    # Extract model from selectedModel (newer legacy) or responder info
+    model_id = None
+    selected = data.get("selectedModel")
+    if isinstance(selected, dict):
+        model_id = selected.get("id") or selected.get("identifier")
+
+    pf.anchor = SessionAnchor(
+        chat_session_id=session_id,
+        creation_date=creation_date,
+        model_id=model_id,
+    )
+
+    requests = data.get("requests", [])
+    if not isinstance(requests, list):
+        return pf
+
+    for idx, req in enumerate(requests):
+        if not isinstance(req, dict):
+            continue
+
+        # Extract token data from response.result.metadata / usage
+        resp = req.get("response", {})
+        result = resp.get("result", {}) if isinstance(resp, dict) else {}
+        md = result.get("metadata", {}) if isinstance(result, dict) else {}
+        usage = result.get("usage", {}) if isinstance(result, dict) else {}
+
+        prompt_tokens = 0
+        output_tokens = 0
+        if isinstance(md, dict):
+            prompt_tokens = md.get("promptTokens") or 0
+            output_tokens = md.get("outputTokens") or 0
+        if not prompt_tokens and isinstance(usage, dict):
+            prompt_tokens = usage.get("promptTokens") or 0
+        if not output_tokens and isinstance(usage, dict):
+            output_tokens = usage.get("completionTokens") or 0
+
+        tool_rounds = 0
+        if isinstance(md, dict):
+            tcr = md.get("toolCallRounds", [])
+            tool_rounds = len(tcr) if isinstance(tcr, list) else 0
+
+        # Timestamp: use result timings, or derive from creationDate
+        timestamp_ms = None
+        if isinstance(result, dict):
+            timings = result.get("timings", {})
+            if isinstance(timings, dict):
+                timestamp_ms = timings.get("requestSent") or timings.get("firstTokenReceived")
+        if timestamp_ms is None:
+            timestamp_ms = creation_date
+
+        req_model = None
+        if isinstance(md, dict):
+            req_model = md.get("modelId")
+
+        event = RequestEvent(
+            chat_session_id=session_id,
+            request_index=idx,
+            request_id=None,
+            model_id=req_model or model_id,
+            timestamp_ms=timestamp_ms,
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            tool_call_rounds=tool_rounds,
+        )
+        pf.requests.append(event)
+
+    return pf
+
+
 def _process_line(pf: ParsedFile, obj: dict, line_no: int) -> None:
     kind = obj.get("kind")
     k = obj.get("k")
