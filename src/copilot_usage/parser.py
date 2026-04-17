@@ -4,9 +4,35 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _get_tokenizer():
+    """Lazy-load tiktoken cl100k_base encoder (used by GPT-4 / Copilot models)."""
+    try:
+        import tiktoken
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return None
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token count for a text string.
+
+    Uses tiktoken cl100k_base if available, otherwise falls back to
+    a ~4 chars/token heuristic.
+    """
+    if not text:
+        return 0
+    enc = _get_tokenizer()
+    if enc is not None:
+        return len(enc.encode(text))
+    # Fallback: ~4 chars per token for English/code mix
+    return max(1, len(text) // 4)
 
 
 @dataclass
@@ -29,6 +55,7 @@ class RequestEvent:
     prompt_tokens: int = 0
     output_tokens: int = 0
     tool_call_rounds: int = 0
+    tokens_estimated: bool = False
 
 
 @dataclass
@@ -156,6 +183,17 @@ def parse_legacy_json(
         if not output_tokens and isinstance(usage, dict):
             output_tokens = usage.get("completionTokens") or 0
 
+        # Estimate tokens from text content when actual counts are missing
+        estimated = False
+        if not prompt_tokens or not output_tokens:
+            prompt_text, resp_text = _extract_legacy_text(req)
+            if not prompt_tokens and prompt_text:
+                prompt_tokens = estimate_tokens(prompt_text)
+                estimated = True
+            if not output_tokens and resp_text:
+                output_tokens = estimate_tokens(resp_text)
+                estimated = True
+
         tool_rounds = 0
         if isinstance(md, dict):
             tcr = md.get("toolCallRounds", [])
@@ -183,10 +221,64 @@ def parse_legacy_json(
             prompt_tokens=prompt_tokens,
             output_tokens=output_tokens,
             tool_call_rounds=tool_rounds,
+            tokens_estimated=estimated,
         )
         pf.requests.append(event)
 
     return pf
+
+
+def _extract_legacy_text(req: dict) -> tuple[str, str]:
+    """Extract (prompt_text, response_text) from a legacy JSON request object.
+
+    prompt_text = message.text + variable context data
+    response_text = concatenated response content parts
+    """
+    # --- Prompt side ---
+    prompt_parts: list[str] = []
+    msg = req.get("message", {})
+    if isinstance(msg, dict):
+        text = msg.get("text", "")
+        if text:
+            prompt_parts.append(text)
+
+    # Variable/context data (attached files, selections, etc.)
+    vd = req.get("variableData", {})
+    if isinstance(vd, dict):
+        for var in vd.get("variables", []):
+            if isinstance(var, dict):
+                val = var.get("value", "")
+                if isinstance(val, str) and val:
+                    prompt_parts.append(val)
+
+    # --- Response side ---
+    resp_parts: list[str] = []
+    resp = req.get("response")
+
+    if isinstance(resp, list):
+        # Legacy format: response is a list of typed items
+        for item in resp:
+            if not isinstance(item, dict):
+                continue
+            val = item.get("value", "")
+            if isinstance(val, str) and val:
+                resp_parts.append(val)
+            elif isinstance(val, dict):
+                content = val.get("content", "")
+                if content:
+                    resp_parts.append(content)
+            # Also check direct content key
+            content = item.get("content", "")
+            if isinstance(content, str) and content:
+                resp_parts.append(content)
+    elif isinstance(resp, dict):
+        result = resp.get("result", {})
+        if isinstance(result, dict):
+            val = result.get("value", "")
+            if isinstance(val, str) and val:
+                resp_parts.append(val)
+
+    return "\n".join(prompt_parts), "\n".join(resp_parts)
 
 
 def _process_line(pf: ParsedFile, obj: dict, line_no: int) -> None:

@@ -59,15 +59,17 @@ def ingest_parsed_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile) -> int:
             """INSERT INTO events (event_id, chat_session_id, workspace_id,
                                    request_index, request_id, model_id,
                                    timestamp_ms, prompt_tokens, output_tokens,
-                                   tool_call_rounds, premium_estimate, source_file)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   tool_call_rounds, premium_estimate,
+                                   tokens_estimated, source_file)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (event_id) DO UPDATE SET
                    model_id = excluded.model_id,
                    timestamp_ms = excluded.timestamp_ms,
                    prompt_tokens = excluded.prompt_tokens,
                    output_tokens = excluded.output_tokens,
                    tool_call_rounds = excluded.tool_call_rounds,
-                   premium_estimate = excluded.premium_estimate""",
+                   premium_estimate = excluded.premium_estimate,
+                   tokens_estimated = excluded.tokens_estimated""",
             [
                 event_id,
                 req.chat_session_id,
@@ -80,6 +82,7 @@ def ingest_parsed_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile) -> int:
                 req.output_tokens,
                 req.tool_call_rounds,
                 premium,
+                req.tokens_estimated,
                 source,
             ],
         )

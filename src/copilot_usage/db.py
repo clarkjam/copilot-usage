@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS events (
     output_tokens      INTEGER,
     tool_call_rounds   INTEGER DEFAULT 0,
     premium_estimate   DOUBLE DEFAULT 0.0,
+    tokens_estimated   BOOLEAN DEFAULT FALSE,
     source_file        TEXT NOT NULL
 );
 
@@ -111,3 +112,7 @@ def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
     # Create sequence if missing (used by scan_runs PK)
     con.execute("CREATE SEQUENCE IF NOT EXISTS seq_scan START 1")
     con.execute(_DDL)
+    # Migrate: add tokens_estimated column if missing
+    cols = {r[0] for r in con.execute("SELECT column_name FROM information_schema.columns WHERE table_name='events'").fetchall()}
+    if "tokens_estimated" not in cols:
+        con.execute("ALTER TABLE events ADD COLUMN tokens_estimated BOOLEAN DEFAULT FALSE")
