@@ -3,25 +3,14 @@ from __future__ import annotations
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, State, callback, html
+from dash_bootstrap_templates import ThemeChangerAIO
 
 from copilot_usage import __version__
 from copilot_usage.config import APP_DATA_DIR, DB_PATH, VSCODE_STORAGE_ROOT
+from copilot_usage.dashboard.app import THEME_OPTIONS
 
 dash.register_page(__name__, path="/settings", name="Settings", order=99)
-
-# ---------------------------------------------------------------------------
-# Theme options
-# ---------------------------------------------------------------------------
-
-_THEMES = {
-    "Darkly": "darkly",
-    "Cyborg": "cyborg",
-    "Slate": "slate",
-    "Solar": "solar",
-    "Superhero": "superhero",
-    "Vapor": "vapor",
-}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,17 +44,23 @@ layout = html.Div([
         html.Div([
             html.Label("Dashboard Theme", className="settings-label"),
             html.P(
-                "Select a Bootswatch dark theme. Changes apply on next restart.",
-                className="text-muted mb-2", style={"fontSize": ".82rem"},
+                "Select a theme below. The change applies instantly — no restart needed.",
+                className="text-muted mb-3", style={"fontSize": ".82rem"},
             ),
-            dbc.RadioItems(
-                id="settings-theme",
-                options=[{"label": k, "value": v} for k, v in _THEMES.items()],
-                value="darkly",
-                inline=True,
-                className="settings-radio",
+            ThemeChangerAIO(
+                aio_id="theme",
+                radio_props={
+                    "options": THEME_OPTIONS,
+                    "value": dbc.themes.DARKLY,
+                },
+                button_props={
+                    "outline": True,
+                    "color": "primary",
+                    "children": [html.I(className="bi bi-palette me-1"), "Change Theme"],
+                    "size": "sm",
+                },
+                offcanvas_props={"title": "Select Theme", "placement": "end"},
             ),
-            html.Div(id="settings-theme-msg", className="mt-2"),
         ], className="p-3"),
     ], className="section-card mb-4"),
 
@@ -158,30 +153,12 @@ layout = html.Div([
             html.Div(id="settings-erase-result", className="mt-3"),
         ], className="p-3"),
     ], className="section-card danger-zone mb-4"),
-
-    # Store for theme persistence
-    dcc.Store(id="settings-theme-store", storage_type="local"),
 ])
 
 
 # ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
-
-@callback(
-    Output("settings-theme-msg", "children"),
-    Input("settings-theme", "value"),
-    prevent_initial_call=True,
-)
-def _theme_changed(theme):
-    return dbc.Alert(
-        f"Theme '{theme}' selected. Restart the dashboard to apply.",
-        color="info",
-        dismissable=True,
-        className="mb-0 py-2",
-        style={"fontSize": ".84rem"},
-    )
-
 
 @callback(
     Output("settings-erase-modal", "is_open"),

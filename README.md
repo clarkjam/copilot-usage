@@ -76,6 +76,12 @@ Generate Shields.io-compatible JSON badges for your workspaces.
 
 ![Badges](docs/images/badges.png)
 
+### Settings
+
+Manage appearance (dark/light theme toggle), view system info, and erase the database.
+
+![Settings](docs/images/settings.png)
+
 ## How It Works
 
 1. **Discovery** — Finds all `chatSessions/*.jsonl` files in VS Code workspace storage

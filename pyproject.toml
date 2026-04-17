@@ -35,6 +35,7 @@ dependencies = [
     "duckdb>=1.1",
     "dash>=2.17",
     "dash-bootstrap-components>=1.6",
+    "dash-bootstrap-templates>=2.0",
     "plotly>=5.22",
     "polars>=1.0",
     "pandas>=2.0",

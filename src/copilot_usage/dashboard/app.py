@@ -4,12 +4,25 @@ from __future__ import annotations
 import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, page_container
+from dash_bootstrap_templates import ThemeChangerAIO
 
 _COPILOT_LOGO = html.Img(
     src="/assets/favicon.svg",
     height="28",
     className="me-2",
 )
+
+# Available themes (dark-oriented Bootswatch)
+THEME_OPTIONS = [
+    {"label": "Darkly", "value": dbc.themes.DARKLY},
+    {"label": "Cyborg", "value": dbc.themes.CYBORG},
+    {"label": "Slate", "value": dbc.themes.SLATE},
+    {"label": "Solar", "value": dbc.themes.SOLAR},
+    {"label": "Superhero", "value": dbc.themes.SUPERHERO},
+    {"label": "Vapor", "value": dbc.themes.VAPOR},
+    {"label": "Flatly (Light)", "value": dbc.themes.FLATLY},
+    {"label": "Cosmo (Light)", "value": dbc.themes.COSMO},
+]
 
 
 def create_app() -> dash.Dash:

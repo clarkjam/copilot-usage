@@ -253,8 +253,15 @@ def explorer_events(
         "ts_desc": "e.timestamp_ms DESC NULLS LAST",
         "ts_asc": "e.timestamp_ms ASC NULLS LAST",
         "prompt_desc": "e.prompt_tokens DESC",
+        "prompt_asc": "e.prompt_tokens ASC",
         "output_desc": "e.output_tokens DESC",
+        "output_asc": "e.output_tokens ASC",
         "premium_desc": "e.premium_estimate DESC",
+        "premium_asc": "e.premium_estimate ASC",
+        "model_asc": "COALESCE(e.model_id, '') ASC",
+        "model_desc": "COALESCE(e.model_id, '') DESC",
+        "workspace_asc": "COALESCE(w.workspace_path, '') ASC",
+        "workspace_desc": "COALESCE(w.workspace_path, '') DESC",
     }
     order = order_map.get(sort_by, "e.timestamp_ms DESC NULLS LAST")
 

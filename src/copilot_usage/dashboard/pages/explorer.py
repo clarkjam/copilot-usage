@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, State, callback, dash_table, dcc, html
 
 from copilot_usage.dashboard import queries
-from copilot_usage.dashboard.app import fmt_number, short_path
+from copilot_usage.dashboard.app import short_path
 
 dash.register_page(__name__, path="/explorer", name="Explorer", order=1)
+
+PAGE_SIZE = 100
 
 # ---------------------------------------------------------------------------
 # Layout
@@ -18,7 +20,6 @@ layout = html.Div([
     # Filter bar
     html.Div([
         dbc.Row([
-            # Search
             dbc.Col([
                 html.Label("Search"),
                 dbc.Input(
@@ -28,7 +29,6 @@ layout = html.Div([
                     className="bg-dark text-light border-secondary",
                 ),
             ], md=4),
-            # Workspace filter
             dbc.Col([
                 html.Label("Workspace"),
                 dcc.Dropdown(
@@ -37,7 +37,6 @@ layout = html.Div([
                     className="dash-dark-dropdown",
                 ),
             ], md=3),
-            # Model filter
             dbc.Col([
                 html.Label("Model"),
                 dcc.Dropdown(
@@ -46,7 +45,6 @@ layout = html.Div([
                     className="dash-dark-dropdown",
                 ),
             ], md=3),
-            # Min tokens
             dbc.Col([
                 html.Label("Min Tokens"),
                 dbc.Input(
@@ -66,23 +64,7 @@ layout = html.Div([
                 ),
             ], md=4),
             dbc.Col([
-                html.Label("Sort By"),
-                dcc.Dropdown(
-                    id="ex-sort",
-                    options=[
-                        {"label": "Date (newest)", "value": "ts_desc"},
-                        {"label": "Date (oldest)", "value": "ts_asc"},
-                        {"label": "Prompt tokens ↓", "value": "prompt_desc"},
-                        {"label": "Output tokens ↓", "value": "output_desc"},
-                        {"label": "Premium ↓", "value": "premium_desc"},
-                    ],
-                    value="ts_desc",
-                    clearable=False,
-                    className="dash-dark-dropdown",
-                ),
-            ], md=2),
-            dbc.Col([
-                html.Label("\u00a0"),  # spacer
+                html.Label("\u00a0"),
                 html.Div([
                     dbc.Button("Apply", id="ex-apply", color="primary", className="me-2"),
                     dbc.Button("Reset", id="ex-reset", color="secondary", outline=True),
@@ -92,34 +74,71 @@ layout = html.Div([
                 html.Label("\u00a0"),
                 html.Div(id="ex-result-count", className="text-muted pt-2",
                           style={"fontSize": "0.85rem"}),
-            ], md=4),
+            ], md=6),
         ], className="g-3 mt-2"),
     ], className="filter-bar"),
 
-    # Results table
+    # Results DataTable with native sorting
     html.Div([
         html.Div("Events", className="card-header"),
-        html.Div(id="ex-table", className="p-0", style={"overflowX": "auto"}),
+        dash_table.DataTable(
+            id="ex-datatable",
+            columns=[
+                {"name": "Date", "id": "date"},
+                {"name": "Session", "id": "session"},
+                {"name": "Workspace", "id": "workspace"},
+                {"name": "Model", "id": "model"},
+                {"name": "Req #", "id": "req", "type": "numeric"},
+                {"name": "Prompt", "id": "prompt", "type": "numeric"},
+                {"name": "Output", "id": "output", "type": "numeric"},
+                {"name": "Tools", "id": "tools", "type": "numeric"},
+                {"name": "Premium", "id": "premium", "type": "numeric"},
+                {"name": "Source", "id": "source"},
+            ],
+            data=[],
+            sort_action="custom",
+            sort_mode="single",
+            sort_by=[{"column_id": "date", "direction": "desc"}],
+            page_action="custom",
+            page_current=0,
+            page_size=PAGE_SIZE,
+            page_count=1,
+            style_table={"overflowX": "auto"},
+            style_header={
+                "backgroundColor": "#161b22",
+                "color": "#c9d1d9",
+                "fontWeight": "600",
+                "borderBottom": "1px solid #30363d",
+                "cursor": "pointer",
+            },
+            style_cell={
+                "backgroundColor": "#0d1117",
+                "color": "#c9d1d9",
+                "borderBottom": "1px solid #21262d",
+                "borderRight": "none",
+                "fontSize": "0.84rem",
+                "padding": "8px 12px",
+                "textAlign": "left",
+                "whiteSpace": "nowrap",
+                "overflow": "hidden",
+                "textOverflow": "ellipsis",
+                "maxWidth": "200px",
+            },
+            style_data_conditional=[
+                {"if": {"row_index": "odd"},
+                 "backgroundColor": "#161b22"},
+                {"if": {"filter_query": "{source} contains 'Legacy'"},
+                 "color": "#d29922"},
+            ],
+            style_filter={
+                "backgroundColor": "#161b22",
+                "color": "#c9d1d9",
+            },
+        ),
     ], className="section-card"),
 
-    # Pagination
-    html.Div([
-        dbc.Pagination(
-            id="ex-pagination",
-            max_value=1,
-            active_page=1,
-            fully_expanded=False,
-            first_last=True,
-            previous_next=True,
-            className="justify-content-center mt-3",
-        ),
-    ]),
-
     # Stores
-    dcc.Store(id="ex-page-size", data=100),
     dcc.Store(id="ex-total-rows", data=0),
-
-    # Trigger initial filter options load
     dcc.Interval(id="ex-init", interval=300, max_intervals=1),
 ])
 
@@ -127,6 +146,17 @@ layout = html.Div([
 # ---------------------------------------------------------------------------
 # Callbacks
 # ---------------------------------------------------------------------------
+
+# Map DataTable column_id → query sort key prefix
+_COL_SORT_MAP = {
+    "date": "ts",
+    "workspace": "workspace",
+    "model": "model",
+    "prompt": "prompt",
+    "output": "output",
+    "premium": "premium",
+}
+
 
 @callback(
     [Output("ex-workspace", "options"), Output("ex-model", "options")],
@@ -142,15 +172,16 @@ def _load_filter_options(_):
 
 @callback(
     [
-        Output("ex-table", "children"),
+        Output("ex-datatable", "data"),
+        Output("ex-datatable", "page_count"),
         Output("ex-result-count", "children"),
-        Output("ex-pagination", "max_value"),
         Output("ex-total-rows", "data"),
     ],
     [
         Input("ex-apply", "n_clicks"),
         Input("ex-init", "n_intervals"),
-        Input("ex-pagination", "active_page"),
+        Input("ex-datatable", "page_current"),
+        Input("ex-datatable", "sort_by"),
     ],
     [
         State("ex-search", "value"),
@@ -159,15 +190,21 @@ def _load_filter_options(_):
         State("ex-min-tokens", "value"),
         State("ex-dates", "start_date"),
         State("ex-dates", "end_date"),
-        State("ex-sort", "value"),
-        State("ex-page-size", "data"),
     ],
 )
-def _apply_filters(_clicks, _init, active_page,
+def _apply_filters(_clicks, _init, page_current, sort_by,
                    search, workspaces, models, min_tokens,
-                   start_date, end_date, sort_by, page_size):
-    page = max(1, active_page or 1)
-    offset = (page - 1) * page_size
+                   start_date, end_date):
+    page = page_current or 0
+    offset = page * PAGE_SIZE
+
+    # Translate DataTable sort_by to query sort key
+    query_sort = "ts_desc"
+    if sort_by and len(sort_by) > 0:
+        col = sort_by[0].get("column_id", "date")
+        direction = sort_by[0].get("direction", "desc")
+        prefix = _COL_SORT_MAP.get(col, "ts")
+        query_sort = f"{prefix}_{direction}"
 
     total, rows = queries.explorer_events(
         search=search or None,
@@ -176,57 +213,36 @@ def _apply_filters(_clicks, _init, active_page,
         min_tokens=int(min_tokens) if min_tokens else None,
         start_date=start_date or None,
         end_date=end_date or None,
-        sort_by=sort_by or "ts_desc",
-        limit=page_size,
+        sort_by=query_sort,
+        limit=PAGE_SIZE,
         offset=offset,
     )
 
-    max_pages = max(1, (total + page_size - 1) // page_size)
-    count_text = f"Showing {offset + 1}–{min(offset + page_size, total)} of {total:,} events"
+    page_count = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    count_text = f"Showing {offset + 1}–{min(offset + PAGE_SIZE, total)} of {total:,} events"
     if total == 0:
         count_text = "No matching events"
 
-    if not rows:
-        table = html.P("No events match your filters.", className="text-muted p-3")
-    else:
-        header = html.Thead(html.Tr([
-            html.Th("Date"), html.Th("Session"), html.Th("Workspace"),
-            html.Th("Model"), html.Th("Req #"), html.Th("Prompt"),
-            html.Th("Output"), html.Th("Tools"), html.Th("Premium"),
-            html.Th("Source"),
-        ]))
+    # Build flat data for DataTable
+    data = []
+    for r in rows:
+        src = "Legacy ≈" if r["data_source"] == "legacy_json" else "JSONL"
+        if r["tokens_estimated"] and "Legacy" not in src:
+            src += " ≈"
+        data.append({
+            "date": r["date_str"],
+            "session": r["session_short"],
+            "workspace": short_path(r["workspace_path"]),
+            "model": (r["model_id"] or "").replace("copilot/", ""),
+            "req": r["request_index"],
+            "prompt": r["prompt_tokens"],
+            "output": r["output_tokens"],
+            "tools": r["tool_call_rounds"],
+            "premium": round(r["premium"], 1),
+            "source": src,
+        })
 
-        def _source_badge(r):
-            if r["data_source"] == "legacy_json":
-                badge = dbc.Badge("Legacy", color="warning", className="me-1")
-            else:
-                badge = dbc.Badge("JSONL", color="info", className="me-1")
-            parts = [badge]
-            if r["tokens_estimated"]:
-                parts.append(
-                    html.Span("≈", title="Tokens estimated via tiktoken",
-                              style={"cursor": "help", "color": "#d29922"}),
-                )
-            return html.Span(parts)
-
-        body = html.Tbody([
-            html.Tr([
-                html.Td(r["date_str"]),
-                html.Td(r["session_short"], title=r["session_id"]),
-                html.Td(short_path(r["workspace_path"]), title=r["workspace_path"]),
-                html.Td((r["model_id"] or "").replace("copilot/", "")),
-                html.Td(str(r["request_index"])),
-                html.Td(fmt_number(r["prompt_tokens"])),
-                html.Td(fmt_number(r["output_tokens"])),
-                html.Td(str(r["tool_call_rounds"])),
-                html.Td(f"~{r['premium']:.1f}"),
-                html.Td(_source_badge(r)),
-            ]) for r in rows
-        ])
-        table = dbc.Table([header, body], striped=True, hover=True, size="sm",
-                          color="dark", className="mb-0")
-
-    return table, count_text, max_pages, total
+    return data, page_count, count_text, total
 
 
 @callback(
@@ -237,10 +253,11 @@ def _apply_filters(_clicks, _init, active_page,
         Output("ex-min-tokens", "value"),
         Output("ex-dates", "start_date"),
         Output("ex-dates", "end_date"),
-        Output("ex-sort", "value"),
+        Output("ex-datatable", "sort_by"),
+        Output("ex-datatable", "page_current"),
     ],
     Input("ex-reset", "n_clicks"),
     prevent_initial_call=True,
 )
 def _reset(_):
-    return "", [], [], None, None, None, "ts_desc"
+    return "", [], [], None, None, None, [{"column_id": "date", "direction": "desc"}], 0
