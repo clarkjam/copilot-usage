@@ -26,6 +26,10 @@ THEME_OPTIONS = [
 
 
 def create_app() -> dash.Dash:
+    # Ensure loguru is configured even when starting in dashboard-only mode
+    from copilot_usage.logging import setup_logging
+    setup_logging()
+
     app = dash.Dash(
         __name__,
         use_pages=True,

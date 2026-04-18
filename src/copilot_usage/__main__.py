@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 import webbrowser
 
@@ -24,11 +23,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    from copilot_usage.logging import setup_logging
+    setup_logging(verbose=args.verbose)
 
     from copilot_usage.db import get_connection
 

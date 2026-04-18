@@ -1,9 +1,11 @@
 """Explorer page — search, filter, and browse event-level data."""
 from __future__ import annotations
 
+import io
+
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, callback, dash_table, dcc, html
+from dash import Input, Output, State, callback, ctx, dash_table, dcc, html
 
 from copilot_usage.dashboard import queries
 from copilot_usage.dashboard.app import short_path
@@ -68,19 +70,28 @@ layout = html.Div([
                 html.Div([
                     dbc.Button("Apply", id="ex-apply", color="primary", className="me-2"),
                     dbc.Button("Reset", id="ex-reset", color="secondary", outline=True),
-                ], className="d-flex"),
-            ], md=2),
-            dbc.Col([
-                html.Label("\u00a0"),
-                html.Div(id="ex-result-count", className="text-muted pt-2",
-                          style={"fontSize": "0.85rem"}),
-            ], md=6),
+                    dbc.Button(
+                        [html.I(className="bi bi-download me-1"), "CSV"],
+                        id="ex-download-csv-btn", color="success", outline=True,
+                        size="sm", className="ms-3",
+                    ),
+                    dbc.Button(
+                        [html.I(className="bi bi-file-earmark-excel me-1"), "Excel"],
+                        id="ex-download-xlsx-btn", color="success", outline=True,
+                        size="sm", className="ms-1",
+                    ),
+                ], className="d-flex align-items-center"),
+            ], md=8),
         ], className="g-3 mt-2"),
     ], className="filter-bar"),
 
     # Results DataTable with native sorting
     html.Div([
-        html.Div("Events", className="card-header"),
+        html.Div([
+            html.Span("Events", style={"fontWeight": "600"}),
+            html.Span(id="ex-result-count", className="text-muted ms-3",
+                      style={"fontSize": "0.82rem", "fontWeight": "400"}),
+        ], className="card-header d-flex align-items-center"),
         dash_table.DataTable(
             id="ex-datatable",
             columns=[
@@ -137,8 +148,9 @@ layout = html.Div([
         ),
     ], className="section-card"),
 
-    # Stores
+    # Stores & download
     dcc.Store(id="ex-total-rows", data=0),
+    dcc.Download(id="ex-download"),
     dcc.Interval(id="ex-init", interval=300, max_intervals=1),
 ])
 
@@ -261,3 +273,74 @@ def _apply_filters(_clicks, _init, page_current, sort_by,
 )
 def _reset(_):
     return "", [], [], None, None, None, [{"column_id": "date", "direction": "desc"}], 0
+
+
+def _gather_export_rows(search, workspaces, models, min_tokens, start_date, end_date):
+    """Fetch all filtered rows (no pagination) for export."""
+    _total, rows = queries.explorer_events(
+        search=search or None,
+        workspace_ids=workspaces or None,
+        model_ids=models or None,
+        min_tokens=int(min_tokens) if min_tokens else None,
+        start_date=start_date or None,
+        end_date=end_date or None,
+        sort_by="ts_desc",
+        limit=100_000,
+        offset=0,
+    )
+    records = []
+    for r in rows:
+        records.append({
+            "Date": r["date_str"],
+            "Session": r["session_id"],
+            "Workspace": r["workspace_path"],
+            "Model": r["model_id"] or "",
+            "Request #": r["request_index"],
+            "Prompt Tokens": r["prompt_tokens"],
+            "Output Tokens": r["output_tokens"],
+            "Tool Rounds": r["tool_call_rounds"],
+            "Premium Estimate": round(r["premium"], 2),
+            "Source": r["data_source"],
+            "Estimated": r["tokens_estimated"],
+        })
+    return records
+
+
+@callback(
+    Output("ex-download", "data"),
+    [Input("ex-download-csv-btn", "n_clicks"),
+     Input("ex-download-xlsx-btn", "n_clicks")],
+    [
+        State("ex-search", "value"),
+        State("ex-workspace", "value"),
+        State("ex-model", "value"),
+        State("ex-min-tokens", "value"),
+        State("ex-dates", "start_date"),
+        State("ex-dates", "end_date"),
+    ],
+    prevent_initial_call=True,
+)
+def _download(csv_clicks, xlsx_clicks, search, workspaces, models,
+              min_tokens, start_date, end_date):
+    import pandas as pd
+
+    triggered = ctx.triggered_id
+    if not triggered:
+        return dash.no_update
+
+    records = _gather_export_rows(search, workspaces, models, min_tokens,
+                                  start_date, end_date)
+    if not records:
+        return dash.no_update
+
+    df = pd.DataFrame(records)
+
+    if triggered == "ex-download-xlsx-btn":
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+            df.to_excel(writer, index=False, sheet_name="Events")
+        buf.seek(0)
+        return dcc.send_bytes(buf.getvalue(), "copilot_usage_events.xlsx")
+
+    # Default: CSV
+    return dcc.send_data_frame(df.to_csv, "copilot_usage_events.csv", index=False)

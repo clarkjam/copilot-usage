@@ -57,6 +57,9 @@ def _run_pipeline_thread(storage_path: str):
         con = get_connection()
         stats = run_scan(con, storage_root=storage_root, on_progress=_append_log)
         con.close()
+        # Invalidate dashboard query cache so fresh data appears immediately
+        from copilot_usage.dashboard.queries import invalidate_cache
+        invalidate_cache()
         with _lock:
             _run_state["stats"] = stats
             _run_state["finished"] = True

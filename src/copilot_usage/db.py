@@ -7,6 +7,8 @@ from copilot_usage.config import APP_DATA_DIR, DB_PATH
 
 SCHEMA_VERSION = 1
 
+_schema_ready = False  # avoid re-validating on every connection
+
 _DDL = """
 -- Tracks each incremental scan invocation
 CREATE TABLE IF NOT EXISTS scan_runs (
@@ -99,6 +101,17 @@ CREATE TABLE IF NOT EXISTS badge_metrics (
 );
 """
 
+_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_events_workspace ON events (workspace_id);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp_ms);
+CREATE INDEX IF NOT EXISTS idx_events_session   ON events (chat_session_id);
+CREATE INDEX IF NOT EXISTS idx_events_model     ON events (model_id);
+CREATE INDEX IF NOT EXISTS idx_events_source_file ON events (source_file);
+CREATE INDEX IF NOT EXISTS idx_file_index_scan  ON file_index (last_scan_id);
+CREATE INDEX IF NOT EXISTS idx_agg_daily_date   ON agg_daily (agg_date);
+CREATE INDEX IF NOT EXISTS idx_agg_session_ws   ON agg_session (workspace_id);
+"""
+
 
 def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
     """Return a DuckDB connection, creating the DB + schema on first use."""
@@ -110,9 +123,17 @@ def get_connection(read_only: bool = False) -> duckdb.DuckDBPyConnection:
 
 
 def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
+    global _schema_ready
+    if _schema_ready:
+        return
     # Create sequence if missing (used by scan_runs PK)
     con.execute("CREATE SEQUENCE IF NOT EXISTS seq_scan START 1")
     con.execute(_DDL)
+    # Create indexes (idempotent)
+    for stmt in _INDEXES.strip().split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            con.execute(stmt)
     # Migrate: add tokens_estimated column if missing
     cols = {r[0] for r in con.execute("SELECT column_name FROM information_schema.columns WHERE table_name='events'").fetchall()}
     if "tokens_estimated" not in cols:
@@ -121,3 +142,4 @@ def _ensure_schema(con: duckdb.DuckDBPyConnection) -> None:
         con.execute("ALTER TABLE events ADD COLUMN data_source TEXT DEFAULT 'jsonl'")
         # Backfill: rows with estimated tokens came from legacy JSON files
         con.execute("UPDATE events SET data_source = 'legacy_json' WHERE tokens_estimated = TRUE")
+    _schema_ready = True

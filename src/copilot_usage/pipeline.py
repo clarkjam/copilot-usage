@@ -1,24 +1,22 @@
 """Orchestrate an incremental scan: discover → parse → ingest → aggregate → badges."""
 from __future__ import annotations
 
-import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 import duckdb
+from loguru import logger as log
 
 from copilot_usage.aggregator import rebuild_aggregates
 from copilot_usage.badges import export_badges
 from copilot_usage.discovery import (
-    discover_jsonl_files,
-    discover_legacy_json_files,
+    discover_all_session_files,
     get_changed_files,
     update_file_index,
 )
 from copilot_usage.ingest import ingest_parsed_file
 from copilot_usage.parser import parse_jsonl, parse_legacy_json
-
-log = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, float | None], None]  # (message, progress_pct)
 
@@ -43,14 +41,10 @@ def run_scan(
     con.execute("INSERT INTO scan_runs (files_checked, files_parsed) VALUES (0, 0)")
     scan_id = con.execute("SELECT MAX(scan_id) FROM scan_runs").fetchone()[0]
 
-    # 2. Discover all JSONL files + legacy JSON files
-    _emit("Discovering JSONL files…", 5)
-    all_jsonl = discover_jsonl_files(storage_root)
-    _emit(f"  Found {len(all_jsonl)} JSONL files", 10)
-
-    _emit("Discovering legacy JSON files…", 12)
-    all_legacy = discover_legacy_json_files(storage_root)
-    _emit(f"  Found {len(all_legacy)} legacy JSON files", 15)
+    # 2. Discover all session files (single directory walk)
+    _emit("Discovering session files…", 5)
+    all_jsonl, all_legacy = discover_all_session_files(storage_root)
+    _emit(f"  Found {len(all_jsonl)} JSONL + {len(all_legacy)} legacy JSON files", 15)
     all_files = all_jsonl + all_legacy
 
     # 3. Upsert workspaces (even if no changed files, we still want the mapping)
@@ -71,28 +65,44 @@ def run_scan(
     changed, deleted = get_changed_files(con, all_files)
     _emit(f"  {len(changed)} changed, {len(deleted)} deleted", 25)
 
-    # 5. Parse + ingest changed files
+    # 5. Parse changed files in parallel, then ingest sequentially
     total_events = 0
     parsed_paths = []
+    affected_ws: set[str] = set()
     n_files = len(changed)
-    for i, (ws_id, ws_path, path) in enumerate(changed):
-        pct = 25 + (i / max(n_files, 1)) * 55  # 25% → 80%
-        _emit(f"Parsing [{i + 1}/{n_files}] {path.name}", pct)
+
+    def _parse_one(item):
+        ws_id, ws_path, path = item
         if path.suffix == ".json":
-            pf = parse_legacy_json(path, ws_id, ws_path)
-        else:
-            pf = parse_jsonl(path, ws_id, ws_path)
-        n = ingest_parsed_file(con, pf)
-        total_events += n
-        parsed_paths.append(path)
+            return parse_legacy_json(path, ws_id, ws_path)
+        return parse_jsonl(path, ws_id, ws_path)
+
+    parsed_files = []
+    if n_files > 0:
+        _emit(f"Parsing {n_files} file(s)…", 25)
+        workers = min(n_files, 8)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_parse_one, item): item for item in changed}
+            for i, fut in enumerate(as_completed(futures)):
+                pct = 25 + ((i + 1) / n_files) * 40  # 25% → 65%
+                ws_id, ws_path, path = futures[fut]
+                _emit(f"Parsed [{i + 1}/{n_files}] {path.name}", pct)
+                parsed_files.append((ws_id, path, fut.result()))
+
+        _emit("Ingesting events…", 68)
+        for ws_id, path, pf in parsed_files:
+            n = ingest_parsed_file(con, pf)
+            total_events += n
+            parsed_paths.append(path)
+            affected_ws.add(ws_id)
 
     # 6. Update file index
     _emit("Updating file index…", 82)
     update_file_index(con, parsed_paths, deleted, scan_id)
 
-    # 7. Rebuild aggregates
+    # 7. Rebuild aggregates (incremental when possible)
     _emit("Rebuilding aggregates…", 88)
-    rebuild_aggregates(con)
+    rebuild_aggregates(con, affected_ws or None)
 
     # 8. Export badges
     _emit("Exporting badges…", 94)

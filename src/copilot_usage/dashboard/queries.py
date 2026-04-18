@@ -1,13 +1,54 @@
 """Query helpers that read from DuckDB for dashboard callbacks."""
 from __future__ import annotations
 
+import threading
+import time
+from functools import wraps
+
 from copilot_usage.db import get_connection
+
+_local = threading.local()
+
+# Simple TTL cache: avoids re-querying on rapid callback bursts (e.g. page load)
+_CACHE_TTL = 5  # seconds
+_cache: dict[str, tuple[float, object]] = {}
+_cache_lock = threading.Lock()
+
+
+def _ttl_cache(fn):
+    """Decorator: cache function result for _CACHE_TTL seconds (key = fn name + args)."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        key = (fn.__name__, args, tuple(sorted(kwargs.items())))
+        now = time.monotonic()
+        with _cache_lock:
+            if key in _cache:
+                ts, val = _cache[key]
+                if now - ts < _CACHE_TTL:
+                    return val
+        result = fn(*args, **kwargs)
+        with _cache_lock:
+            _cache[key] = (now, result)
+        return result
+    return wrapper
+
+
+def invalidate_cache() -> None:
+    """Clear the query cache (call after a scan/ingest)."""
+    with _cache_lock:
+        _cache.clear()
 
 
 def _con():
-    return get_connection(read_only=True)
+    """Return a thread-local read-only connection (reused across queries)."""
+    con = getattr(_local, "con", None)
+    if con is None:
+        con = get_connection(read_only=True)
+        _local.con = con
+    return con
 
 
+@_ttl_cache
 def kpi_totals() -> dict:
     con = _con()
     row = con.execute("""
@@ -21,7 +62,6 @@ def kpi_totals() -> dict:
                SUM(CASE WHEN tokens_estimated THEN 1 ELSE 0 END) AS estimated_events
         FROM events
     """).fetchone()
-    con.close()
     return {
         "total_requests": row[0],
         "total_prompt": row[1],
@@ -34,6 +74,7 @@ def kpi_totals() -> dict:
     }
 
 
+@_ttl_cache
 def daily_timeseries() -> list[dict]:
     con = _con()
     rows = con.execute("""
@@ -42,7 +83,6 @@ def daily_timeseries() -> list[dict]:
         FROM agg_daily
         ORDER BY agg_date
     """).fetchall()
-    con.close()
     return [
         {
             "date": str(r[0]),
@@ -56,6 +96,7 @@ def daily_timeseries() -> list[dict]:
     ]
 
 
+@_ttl_cache
 def daily_by_source() -> list[dict]:
     """Daily token totals split by data_source (jsonl vs legacy_json)."""
     con = _con()
@@ -70,7 +111,6 @@ def daily_by_source() -> list[dict]:
         GROUP BY 1, 2
         ORDER BY 1
     """).fetchall()
-    con.close()
     return [
         {"date": str(r[0]), "source": r[1], "requests": r[2],
          "prompt_tokens": r[3], "output_tokens": r[4]}
@@ -78,13 +118,13 @@ def daily_by_source() -> list[dict]:
     ]
 
 
+@_ttl_cache
 def scan_history(limit: int = 20) -> list[dict]:
     con = _con()
     rows = con.execute(f"""
         SELECT scan_id, started_at, finished_at, files_checked, files_parsed
         FROM scan_runs ORDER BY scan_id DESC LIMIT {int(limit)}
     """).fetchall()
-    con.close()
     return [
         {"scan_id": r[0], "started_at": str(r[1]) if r[1] else "",
          "finished_at": str(r[2]) if r[2] else "", "files_checked": r[3], "files_parsed": r[4]}
@@ -92,6 +132,7 @@ def scan_history(limit: int = 20) -> list[dict]:
     ]
 
 
+@_ttl_cache
 def badge_data() -> list[dict]:
     """Return badge JSON data for all workspaces + summary."""
     con = _con()
@@ -101,7 +142,6 @@ def badge_data() -> list[dict]:
                premium_estimate, top_model
         FROM badge_metrics ORDER BY total_prompt + total_output DESC
     """).fetchall()
-    con.close()
     return [
         {"workspace_id": r[0], "workspace_path": r[1], "requests": r[2],
          "prompt_tokens": r[3], "output_tokens": r[4], "premium": r[5], "top_model": r[6]}
@@ -109,6 +149,7 @@ def badge_data() -> list[dict]:
     ]
 
 
+@_ttl_cache
 def model_mix() -> list[dict]:
     con = _con()
     rows = con.execute("""
@@ -120,10 +161,10 @@ def model_mix() -> list[dict]:
         GROUP BY 1
         ORDER BY total_tokens DESC
     """).fetchall()
-    con.close()
     return [{"model": r[0], "requests": r[1], "total_tokens": r[2], "premium": r[3]} for r in rows]
 
 
+@_ttl_cache
 def workspace_table() -> list[dict]:
     con = _con()
     rows = con.execute("""
@@ -133,7 +174,6 @@ def workspace_table() -> list[dict]:
         FROM badge_metrics b
         ORDER BY b.total_prompt + b.total_output DESC
     """).fetchall()
-    con.close()
     return [
         {
             "workspace_id": r[0],
@@ -148,6 +188,7 @@ def workspace_table() -> list[dict]:
     ]
 
 
+@_ttl_cache
 def session_list(limit: int = 200) -> list[dict]:
     con = _con()
     rows = con.execute(f"""
@@ -160,7 +201,6 @@ def session_list(limit: int = 200) -> list[dict]:
         ORDER BY a.last_ts DESC NULLS LAST
         LIMIT {int(limit)}
     """).fetchall()
-    con.close()
     return [
         {
             "session_id": r[0],
@@ -182,21 +222,21 @@ def session_list(limit: int = 200) -> list[dict]:
 # Explorer queries
 # ---------------------------------------------------------------------------
 
+@_ttl_cache
 def explorer_workspaces() -> list[dict]:
     con = _con()
     rows = con.execute("""
         SELECT workspace_id, workspace_path FROM workspaces ORDER BY workspace_path
     """).fetchall()
-    con.close()
     return [{"id": r[0], "path": r[1]} for r in rows]
 
 
+@_ttl_cache
 def explorer_models() -> list[str]:
     con = _con()
     rows = con.execute("""
         SELECT DISTINCT COALESCE(model_id, 'unknown') AS m FROM events ORDER BY m
     """).fetchall()
-    con.close()
     return [r[0] for r in rows]
 
 
@@ -267,14 +307,7 @@ def explorer_events(
 
     con = _con()
 
-    # Total count
-    count_row = con.execute(
-        f"SELECT COUNT(*) FROM events e LEFT JOIN workspaces w ON w.workspace_id = e.workspace_id WHERE {where}",
-        params,
-    ).fetchone()
-    total = count_row[0]
-
-    # Page of results
+    # Single query: use COUNT(*) OVER() to get total in the same scan as data
     rows = con.execute(f"""
         SELECT
             e.event_id,
@@ -289,14 +322,16 @@ def explorer_events(
             e.tool_call_rounds,
             e.premium_estimate,
             e.tokens_estimated,
-            e.data_source
+            e.data_source,
+            COUNT(*) OVER() AS _total
         FROM events e
         LEFT JOIN workspaces w ON w.workspace_id = e.workspace_id
         WHERE {where}
         ORDER BY {order}
         LIMIT ? OFFSET ?
     """, params + [limit, offset]).fetchall()
-    con.close()
+
+    total = rows[0][13] if rows else 0
 
     result = []
     for r in rows:

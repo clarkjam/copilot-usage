@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from urllib.parse import unquote
 
 import duckdb
+from loguru import logger as log
 
 from copilot_usage.config import VSCODE_STORAGE_ROOT
-
-log = logging.getLogger(__name__)
 
 
 def resolve_workspace(workspace_dir: Path) -> tuple[str, str]:
@@ -32,18 +30,20 @@ def resolve_workspace(workspace_dir: Path) -> tuple[str, str]:
     return workspace_id, workspace_path
 
 
-def discover_jsonl_files(
+def discover_all_session_files(
     storage_root: Path | None = None,
-) -> list[tuple[str, str, Path]]:
-    """Find all chatSessions/*.jsonl files.
+) -> tuple[list[tuple[str, str, Path]], list[tuple[str, str, Path]]]:
+    """Single-pass discovery of both JSONL and legacy JSON session files.
 
-    Returns list of (workspace_id, workspace_path, jsonl_path).
+    Returns (jsonl_files, legacy_json_files) where each item is
+    (workspace_id, workspace_path, file_path).
     """
     root = storage_root or VSCODE_STORAGE_ROOT
-    results: list[tuple[str, str, Path]] = []
+    jsonl_results: list[tuple[str, str, Path]] = []
+    legacy_results: list[tuple[str, str, Path]] = []
     if not root.exists():
-        log.warning("VS Code storage root not found: %s", root)
-        return results
+        log.warning("VS Code storage root not found: {}", root)
+        return jsonl_results, legacy_results
 
     for workspace_dir in root.iterdir():
         if not workspace_dir.is_dir():
@@ -52,11 +52,32 @@ def discover_jsonl_files(
         if not sessions_dir.is_dir():
             continue
         workspace_id, workspace_path = resolve_workspace(workspace_dir)
-        for jsonl in sessions_dir.glob("*.jsonl"):
-            results.append((workspace_id, workspace_path, jsonl))
+        for f in sessions_dir.iterdir():
+            if not f.is_file():
+                continue
+            if f.suffix == ".jsonl":
+                jsonl_results.append((workspace_id, workspace_path, f))
+            elif f.suffix == ".json":
+                legacy_results.append((workspace_id, workspace_path, f))
 
-    log.info("Discovered %d JSONL files across %d workspaces", len(results), len({r[0] for r in results}))
-    return results
+    log.info(
+        "Discovered {} JSONL + {} legacy JSON files across {} workspaces",
+        len(jsonl_results),
+        len(legacy_results),
+        len({r[0] for r in jsonl_results} | {r[0] for r in legacy_results}),
+    )
+    return jsonl_results, legacy_results
+
+
+def discover_jsonl_files(
+    storage_root: Path | None = None,
+) -> list[tuple[str, str, Path]]:
+    """Find all chatSessions/*.jsonl files.
+
+    Returns list of (workspace_id, workspace_path, jsonl_path).
+    """
+    jsonl, _ = discover_all_session_files(storage_root)
+    return jsonl
 
 
 def discover_legacy_json_files(
@@ -66,23 +87,8 @@ def discover_legacy_json_files(
 
     Returns list of (workspace_id, workspace_path, json_path).
     """
-    root = storage_root or VSCODE_STORAGE_ROOT
-    results: list[tuple[str, str, Path]] = []
-    if not root.exists():
-        return results
-
-    for workspace_dir in root.iterdir():
-        if not workspace_dir.is_dir():
-            continue
-        sessions_dir = workspace_dir / "chatSessions"
-        if not sessions_dir.is_dir():
-            continue
-        workspace_id, workspace_path = resolve_workspace(workspace_dir)
-        for json_file in sessions_dir.glob("*.json"):
-            results.append((workspace_id, workspace_path, json_file))
-
-    log.info("Discovered %d legacy JSON files across %d workspaces", len(results), len({r[0] for r in results}))
-    return results
+    _, legacy = discover_all_session_files(storage_root)
+    return legacy
 
 
 def get_changed_files(
@@ -117,7 +123,7 @@ def get_changed_files(
     current_paths = set(candidate_map.keys())
     deleted = set(existing.keys()) - current_paths
 
-    log.info("Incremental: %d changed, %d deleted (of %d total candidates)", len(changed), len(deleted), len(candidates))
+    log.info("Incremental: {} changed, {} deleted (of {} total candidates)", len(changed), len(deleted), len(candidates))
     return changed, deleted
 
 

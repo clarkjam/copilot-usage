@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
-log = logging.getLogger(__name__)
+from loguru import logger as log
 
 
 @lru_cache(maxsize=1)
@@ -89,20 +88,21 @@ def parse_jsonl(
     )
 
     try:
-        raw_lines = jsonl_path.read_text(encoding="utf-8").splitlines()
+        fh = open(jsonl_path, encoding="utf-8")
     except OSError as exc:
-        log.warning("Cannot read %s: %s", jsonl_path, exc)
+        log.warning("Cannot read {}: {}", jsonl_path, exc)
         return pf
 
-    for line_no, raw in enumerate(raw_lines):
-        if not raw.strip():
-            continue
-        try:
-            obj = json.loads(raw)
-        except json.JSONDecodeError:
-            log.debug("Malformed JSON at %s:%d", jsonl_path.name, line_no)
-            continue
-        _process_line(pf, obj, line_no)
+    with fh:
+        for line_no, raw in enumerate(fh):
+            if not raw.strip():
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                log.debug("Malformed JSON at {}:{}", jsonl_path.name, line_no)
+                continue
+            _process_line(pf, obj, line_no)
 
     # If no session anchor was found, use the file stem as session ID
     if not pf.anchor:
@@ -140,7 +140,7 @@ def parse_legacy_json(
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("Cannot read legacy JSON %s: %s", json_path, exc)
+        log.warning("Cannot read legacy JSON {}: {}", json_path, exc)
         return pf
 
     if not isinstance(data, dict):

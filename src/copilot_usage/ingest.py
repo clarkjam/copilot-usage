@@ -1,14 +1,11 @@
 """Write parsed events into DuckDB and compute premium-request estimates."""
 from __future__ import annotations
 
-import logging
-
 import duckdb
+from loguru import logger as log
 
 from copilot_usage.config import get_multiplier
 from copilot_usage.parser import ParsedFile
-
-log = logging.getLogger(__name__)
 
 
 def ingest_parsed_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile) -> int:
@@ -50,12 +47,21 @@ def ingest_parsed_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile) -> int:
     # Delete previous events from this source file (re-parse replaces all)
     con.execute("DELETE FROM events WHERE source_file = ?", [source])
 
-    count = 0
-    for req in pf.requests:
-        event_id = f"{req.chat_session_id}:{req.request_index}"
-        premium = get_multiplier(req.model_id or "") if (req.prompt_tokens or req.output_tokens) else 0.0
+    # Batch insert all events at once
+    if pf.requests:
+        rows = []
+        for req in pf.requests:
+            event_id = f"{req.chat_session_id}:{req.request_index}"
+            premium = get_multiplier(req.model_id or "") if (req.prompt_tokens or req.output_tokens) else 0.0
+            rows.append([
+                event_id, req.chat_session_id, pf.workspace_id,
+                req.request_index, req.request_id, req.model_id,
+                req.timestamp_ms, req.prompt_tokens, req.output_tokens,
+                req.tool_call_rounds, premium,
+                req.tokens_estimated, pf.data_source, source,
+            ])
 
-        con.execute(
+        con.executemany(
             """INSERT INTO events (event_id, chat_session_id, workspace_id,
                                    request_index, request_id, model_id,
                                    timestamp_ms, prompt_tokens, output_tokens,
@@ -71,23 +77,7 @@ def ingest_parsed_file(con: duckdb.DuckDBPyConnection, pf: ParsedFile) -> int:
                    premium_estimate = excluded.premium_estimate,
                    tokens_estimated = excluded.tokens_estimated,
                    data_source = excluded.data_source""",
-            [
-                event_id,
-                req.chat_session_id,
-                pf.workspace_id,
-                req.request_index,
-                req.request_id,
-                req.model_id,
-                req.timestamp_ms,
-                req.prompt_tokens,
-                req.output_tokens,
-                req.tool_call_rounds,
-                premium,
-                req.tokens_estimated,
-                pf.data_source,
-                source,
-            ],
+            rows,
         )
-        count += 1
 
-    return count
+    return len(pf.requests)

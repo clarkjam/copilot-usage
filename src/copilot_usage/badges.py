@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import json
-import logging
 
 import duckdb
+from loguru import logger as log
 
 from copilot_usage.config import BADGE_DIR
-
-log = logging.getLogger(__name__)
 
 
 def export_badges(con: duckdb.DuckDBPyConnection) -> None:
@@ -52,7 +50,7 @@ def export_badges(con: duckdb.DuckDBPyConnection) -> None:
         "namedLogo": "githubcopilot",
     }
     (BADGE_DIR / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    log.info("Exported %d workspace badges + summary to %s", len(rows), BADGE_DIR)
+    log.info("Exported {} workspace badges + summary to {}", len(rows), BADGE_DIR)
 
 
 def _format_tokens(n: int) -> str:
