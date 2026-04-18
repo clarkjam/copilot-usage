@@ -1,5 +1,10 @@
 # Copilot Usage Analytics
 
+[![PyPI version](https://img.shields.io/pypi/v/copilot-usage?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/copilot-usage/)
+[![GitHub release](https://img.shields.io/github/v/release/SachiHarshitha/copilot-token-estimator?logo=github)](https://github.com/SachiHarshitha/copilot-token-estimator/releases/latest)
+[![Python](https://img.shields.io/pypi/pyversions/copilot-usage?logo=python&logoColor=white)](https://pypi.org/project/copilot-usage/)
+[![License](https://img.shields.io/github/license/SachiHarshitha/copilot-token-estimator)](LICENSE)
+
 A **local-first** analytics dashboard that parses your VS Code Copilot chat session data and visualises token usage, premium request estimates, and model distribution — all without sending any data externally.
 
 ## Why I Built This
