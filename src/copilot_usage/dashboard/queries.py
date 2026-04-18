@@ -39,11 +39,26 @@ def invalidate_cache() -> None:
         _cache.clear()
 
 
+def close_connections() -> None:
+    """Close any thread-local DB connections and clear the query cache.
+
+    Call before a scan to avoid holding connections during writes.
+    """
+    con = getattr(_local, "con", None)
+    if con is not None:
+        try:
+            con.close()
+        except Exception:
+            pass
+        _local.con = None
+    invalidate_cache()
+
+
 def _con():
-    """Return a thread-local read-only connection (reused across queries)."""
+    """Return a thread-local connection (reused across queries)."""
     con = getattr(_local, "con", None)
     if con is None:
-        con = get_connection(read_only=True)
+        con = get_connection(read_only=False)
         _local.con = con
     return con
 

@@ -2,6 +2,10 @@
 
 A **local-first** analytics dashboard that parses your VS Code Copilot chat session data and visualises token usage, premium request estimates, and model distribution — all without sending any data externally.
 
+## Why I Built This
+
+I built this tool to make GitHub Copilot usage more transparent and actionable in real development work. Beyond showing token usage over time, it helps estimate and allocate AI costs at repository level — something that is difficult today when developers work across multiple systems in parallel. By turning persisted Copilot session data into a timeline tied to projects, the tool makes it easier to understand usage patterns, compare workflows, and assign clearer estimated costs to each repo.
+
 ![Dashboard Overview](docs/images/dashboard.png)
 ![Dashboard Charts](docs/images/dashboard_2.png)
 
@@ -47,7 +51,27 @@ The dashboard opens automatically at [http://127.0.0.1:8050](http://127.0.0.1:80
 | `--no-browser` | Don't auto-open browser |
 | `-v, --verbose` | Enable debug logging |
 
-## Dashboard Pages
+
+### CLI & Terminal Dashboard
+
+The tool ships with an interactive CLI powered by [Rich](https://github.com/Textualize/rich) and [InquirerPy](https://github.com/kazhala/InquirerPy). When launched without arguments, you get an arrow-key menu to scan, launch the web dashboard, open the terminal dashboard, or adjust settings — all without leaving the terminal.
+
+A full **terminal UI dashboard** built with [Textual](https://github.com/Textualize/textual) shows KPIs, model breakdown, and workspace stats directly in the console. Press `S` to trigger a scan, `R` to refresh, and `Q` to quit.
+
+```bash
+# Interactive mode (arrow-key menu)
+copilot-usage
+
+# Launch terminal dashboard directly
+copilot-usage tui
+```
+
+![CLI Dashboard](docs/images/cli.png)
+
+
+## Web Dashboard
+
+The web dashboard is a multi-page [Plotly Dash](https://dash.plotly.com/) application served locally. It provides interactive charts, filterable tables, and real-time pipeline controls — all rendered in the browser with no external dependencies or data leaving your machine.
 
 ### Overview
 
@@ -126,7 +150,7 @@ Premium request estimates use GitHub's published multiplier table:
 
 ```
 src/copilot_usage/
-├── __main__.py        # CLI entrypoint
+├── __main__.py        # CLI entrypoint (interactive + classic)
 ├── config.py          # Paths, model multipliers
 ├── db.py              # DuckDB schema & connection
 ├── discovery.py       # JSONL file discovery
@@ -135,6 +159,8 @@ src/copilot_usage/
 ├── aggregator.py      # Pre-aggregation
 ├── pipeline.py        # Scan orchestrator
 ├── badges.py          # Shields.io badge export
+├── logging.py         # Loguru logging config
+├── tui.py             # Textual terminal dashboard
 └── dashboard/
     ├── app.py         # Dash multi-page app
     ├── assets/        # CSS & favicon
@@ -143,8 +169,8 @@ src/copilot_usage/
     │   ├── explorer.py    # Search & filter page
     │   ├── pipeline.py    # Pipeline runner page
     │   ├── badges.py      # Badge generator page
-    │   └── settings.py    # Settings & DB management
-    └── queries.py     # Read-only DB queries
+    │   └── settings.py    # Settings, logs & DB management
+    └── queries.py     # DB queries
 ```
 
 ## Requirements
