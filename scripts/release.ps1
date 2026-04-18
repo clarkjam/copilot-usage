@@ -128,7 +128,7 @@ try {
 
     Write-Host ""
     Write-Host "  Release triggered! Watch progress at:" -ForegroundColor Cyan
-    Write-Host "  https://github.com/SachiHarshitha/copilot-token-estimator/actions" -ForegroundColor DarkCyan
+    Write-Host "  https://github.com/SachiHarshitha/copilot-usage/actions" -ForegroundColor DarkCyan
     Write-Host ""
 
 }

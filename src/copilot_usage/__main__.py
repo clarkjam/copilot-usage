@@ -5,7 +5,7 @@ import argparse
 import sys
 import webbrowser
 
-REPO_URL = "https://github.com/SachiHarshitha/copilot-token-estimator"
+REPO_URL = "https://github.com/SachiHarshitha/copilot-usage"
 
 
 # ---------------------------------------------------------------------------

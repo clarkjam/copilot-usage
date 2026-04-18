@@ -85,13 +85,13 @@ _settings_content = html.Div([
             html.Div([
                 html.A(
                     [html.I(className="bi bi-github me-1"), "Repository"],
-                    href="https://github.com/SachiHarshitha/copilot-token-estimator",
+                    href="https://github.com/SachiHarshitha/copilot-usage",
                     target="_blank",
                     className="btn btn-outline-secondary btn-sm me-2",
                 ),
                 html.A(
                     [html.I(className="bi bi-bug me-1"), "Report Issue"],
-                    href="https://github.com/SachiHarshitha/copilot-token-estimator/issues",
+                    href="https://github.com/SachiHarshitha/copilot-usage/issues",
                     target="_blank",
                     className="btn btn-outline-secondary btn-sm",
                 ),

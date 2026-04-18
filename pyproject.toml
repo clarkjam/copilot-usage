@@ -57,9 +57,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SachiHarshitha/copilot-token-estimator"
-Repository = "https://github.com/SachiHarshitha/copilot-token-estimator"
-Issues = "https://github.com/SachiHarshitha/copilot-token-estimator/issues"
+Homepage = "https://github.com/SachiHarshitha/copilot-usage"
+Repository = "https://github.com/SachiHarshitha/copilot-usage"
+Issues = "https://github.com/SachiHarshitha/copilot-usage/issues"
 
 [project.scripts]
 copilot-usage = "copilot_usage.__main__:main"
