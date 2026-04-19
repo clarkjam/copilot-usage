@@ -1,7 +1,7 @@
 /** Status bar item showing workspace token count. */
 
 import * as vscode from 'vscode';
-import { findWorkspaceByPath } from '../core/discovery';
+import { findCurrentWorkspace } from '../core/discovery';
 import { parseAllFiles, flattenEvents } from '../core/aggregator';
 
 export class StatusBarManager implements vscode.Disposable {
@@ -39,7 +39,9 @@ export class StatusBarManager implements vscode.Disposable {
     }
 
     try {
-      const ws = await findWorkspaceByPath(folders[0].uri.fsPath);
+      const wsFileUri = vscode.workspace.workspaceFile?.toString();
+      const folderPaths = folders.map(f => f.uri.fsPath);
+      const ws = await findCurrentWorkspace(wsFileUri, folderPaths);
       if (!ws) {
         this.item.text = '$(copilot) No data';
         return;

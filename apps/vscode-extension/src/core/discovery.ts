@@ -100,6 +100,54 @@ export async function findWorkspaceByPath(
   return workspaces.find(ws => normalizePath(ws.workspacePath) === normTarget);
 }
 
+/**
+ * Find workspace info by .code-workspace file path.
+ * VS Code stores multi-root workspaces under the `workspace` key in workspace.json,
+ * so we match against the stored workspace path directly.
+ */
+export async function findWorkspaceByFile(
+  workspaceFilePath: string,
+  storageRoot?: string,
+): Promise<WorkspaceInfo | undefined> {
+  const workspaces = await discoverWorkspaces(storageRoot);
+  const normTarget = normalizePath(workspaceFilePath);
+  return workspaces.find(ws => normalizePath(ws.workspacePath) === normTarget);
+}
+
+/**
+ * Try multiple strategies to find workspace data:
+ * 1. Match by .code-workspace file (multi-root workspaces)
+ * 2. Match by each workspace folder path
+ * Returns the first match found.
+ */
+export async function findCurrentWorkspace(
+  workspaceFileUri: string | undefined,
+  folderPaths: string[],
+  storageRoot?: string,
+): Promise<WorkspaceInfo | undefined> {
+  const workspaces = await discoverWorkspaces(storageRoot);
+
+  // Strategy 1: match by .code-workspace file path
+  if (workspaceFileUri) {
+    let wsFilePath = workspaceFileUri;
+    if (wsFilePath.startsWith('file:///')) {
+      wsFilePath = decodeURIComponent(wsFilePath.slice(8));
+    }
+    const normFile = normalizePath(wsFilePath);
+    const match = workspaces.find(ws => normalizePath(ws.workspacePath) === normFile);
+    if (match) { return match; }
+  }
+
+  // Strategy 2: match by folder paths (single-folder workspaces)
+  for (const fp of folderPaths) {
+    const normFolder = normalizePath(fp);
+    const match = workspaces.find(ws => normalizePath(ws.workspacePath) === normFolder);
+    if (match) { return match; }
+  }
+
+  return undefined;
+}
+
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }

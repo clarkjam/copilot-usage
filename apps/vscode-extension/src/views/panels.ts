@@ -1,13 +1,14 @@
 /** Workspace-scoped analysis webview panel. */
 
 import * as vscode from 'vscode';
-import { findWorkspaceByPath, discoverWorkspaces } from '../core/discovery';
+import { findCurrentWorkspace, discoverWorkspaces } from '../core/discovery';
 import { parseAllFiles, flattenEvents, computeKpis, computeModelStats, computeDailyStats, computeWorkspaceStats } from '../core/aggregator';
 
 export class WorkspacePanel {
   public static currentPanel: WorkspacePanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
+  private disposed = false;
 
   private constructor(panel: vscode.WebviewPanel, private extensionUri: vscode.Uri) {
     this.panel = panel;
@@ -43,18 +44,26 @@ export class WorkspacePanel {
     await WorkspacePanel.currentPanel.loadData();
   }
 
+  private setHtml(html: string): void {
+    if (!this.disposed) { this.panel.webview.html = html; }
+  }
+
   private async loadData(): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
-      this.panel.webview.html = getWorkspaceHtml(undefined, undefined, undefined, undefined, 'No workspace folder open.');
+      this.setHtml(getWorkspaceHtml(undefined, undefined, undefined, undefined, 'No workspace folder open.', true));
       return;
     }
 
-    const folderPath = folders[0].uri.fsPath;
-    const ws = await findWorkspaceByPath(folderPath);
+    const wsFileUri = vscode.workspace.workspaceFile?.toString();
+    const folderPaths = folders.map(f => f.uri.fsPath);
+    const ws = await findCurrentWorkspace(wsFileUri, folderPaths);
     if (!ws) {
-      this.panel.webview.html = getWorkspaceHtml(undefined, undefined, undefined, undefined,
-        `No Copilot session data found for this workspace.\n\nLooked for: ${folderPath}`);
+      const searched = wsFileUri
+        ? `workspace file: ${vscode.workspace.workspaceFile!.fsPath}`
+        : folderPaths.join(', ');
+      this.setHtml(getWorkspaceHtml(undefined, undefined, undefined, undefined,
+        `No Copilot session data found for this workspace.\n\nLooked for: ${searched}`, true));
       return;
     }
 
@@ -64,10 +73,11 @@ export class WorkspacePanel {
     const models = computeModelStats(events);
     const daily = computeDailyStats(events);
 
-    this.panel.webview.html = getWorkspaceHtml(kpis, models, daily, ws.workspacePath);
+    this.setHtml(getWorkspaceHtml(kpis, models, daily, ws.workspacePath));
   }
 
   private dispose(): void {
+    this.disposed = true;
     WorkspacePanel.currentPanel = undefined;
     this.panel.dispose();
     for (const d of this.disposables) { d.dispose(); }
@@ -80,6 +90,7 @@ export class DashboardPanel {
   public static currentPanel: DashboardPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
+  private disposed = false;
 
   private constructor(panel: vscode.WebviewPanel, private extensionUri: vscode.Uri) {
     this.panel = panel;
@@ -117,14 +128,18 @@ export class DashboardPanel {
     await DashboardPanel.currentPanel.loadData();
   }
 
+  private setHtml(html: string): void {
+    if (!this.disposed) { this.panel.webview.html = html; }
+  }
+
   private showLoading(): void {
-    this.panel.webview.html = loadingPage();
+    this.setHtml(loadingPage());
   }
 
   private async loadData(): Promise<void> {
     const workspaces = await discoverWorkspaces();
     if (workspaces.length === 0) {
-      this.panel.webview.html = getDashboardHtml(undefined, undefined, undefined, undefined, 'No Copilot session data found.');
+      this.setHtml(getDashboardHtml(undefined, undefined, undefined, undefined, 'No Copilot session data found.'));
       return;
     }
 
@@ -136,10 +151,11 @@ export class DashboardPanel {
 
     const wsStats = computeWorkspaceStats(parsed, events);
 
-    this.panel.webview.html = getDashboardHtml(kpis, models, daily, wsStats);
+    this.setHtml(getDashboardHtml(kpis, models, daily, wsStats));
   }
 
   private dispose(): void {
+    this.disposed = true;
     DashboardPanel.currentPanel = undefined;
     this.panel.dispose();
     for (const d of this.disposables) { d.dispose(); }
@@ -298,8 +314,12 @@ function kpiCard(label: string, value: string): string {
   return `<div class="kpi"><div class="value">${esc(value)}</div><div class="label">${esc(label)}</div></div>`;
 }
 
-function errorPage(msg: string): string {
-  return `<!DOCTYPE html><html><head>${commonStyles()}</head><body><div class="error"><h2>No Data</h2><p>${esc(msg)}</p></div></body></html>`;
+function errorPage(msg: string, showDashboardButton = false): string {
+  const dashBtn = showDashboardButton
+    ? `<br><br><button class="btn" onclick="openDashboard()" style="font-size:1em;padding:10px 24px;">🌐 Open Global Dashboard</button>
+       <script>const vscode = acquireVsCodeApi(); function openDashboard() { vscode.postMessage({ command: 'openDashboard' }); }</script>`
+    : '';
+  return `<!DOCTYPE html><html><head>${commonStyles()}</head><body><div class="error"><h2>No Data</h2><p>${esc(msg)}</p>${dashBtn}</div></body></html>`;
 }
 
 function loadingPage(): string {
@@ -337,9 +357,10 @@ function getWorkspaceHtml(
   daily?: DailyStats[],
   wsPath?: string,
   error?: string,
+  showDashboardButton = false,
 ): string {
   if (error || !kpis) {
-    return errorPage(error || 'No data');
+    return errorPage(error || 'No data', showDashboardButton);
   }
 
   const modelRows = (models || []).map(m =>
