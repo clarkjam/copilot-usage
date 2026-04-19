@@ -10,7 +10,8 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $root = Split-Path -Parent $scriptDir
-$spec = Join-Path $root "copilot-usage.spec"
+$cliDir = Join-Path $root "apps" "cli"
+$spec = Join-Path $cliDir "copilot-usage.spec"
 $dist = Join-Path $root "dist"
 $exe  = Join-Path $dist "copilot-usage.exe"
 
@@ -31,7 +32,9 @@ if ($Clean) {
 # --- Install deps ---
 if ($Install) {
     Write-Host "[2/4] Installing build dependencies..." -ForegroundColor Yellow
+    Push-Location $cliDir
     pip install -e ".[dev]" -q
+    Pop-Location
     Write-Host "       Dependencies ready." -ForegroundColor Green
 } else {
     Write-Host "[2/4] Dependency install skipped (use -Install to update)" -ForegroundColor DarkGray

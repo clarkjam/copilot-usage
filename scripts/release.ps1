@@ -34,8 +34,8 @@ $ErrorActionPreference = "Stop"
 # ── Resolve paths ─────────────────────────────────────────────────
 
 $RepoRoot   = Split-Path -Parent $PSScriptRoot
-$Pyproject  = Join-Path $RepoRoot "pyproject.toml"
-$InitFile   = Join-Path $RepoRoot "src" "copilot_usage" "__init__.py"
+$Pyproject  = Join-Path $RepoRoot "apps" "cli" "pyproject.toml"
+$InitFile   = Join-Path $RepoRoot "apps" "cli" "src" "copilot_usage" "__init__.py"
 
 if (-not (Test-Path $Pyproject)) {
     Write-Error "Cannot find $Pyproject — run from the repo root."

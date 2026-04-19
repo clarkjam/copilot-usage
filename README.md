@@ -30,6 +30,7 @@ I built this tool to make GitHub Copilot usage more transparent and actionable i
 ### Install
 
 ```bash
+cd apps/cli
 pip install -e .
 ```
 
@@ -154,28 +155,41 @@ Premium request estimates use GitHub's published multiplier table:
 ## Project Structure
 
 ```
-src/copilot_usage/
-├── __main__.py        # CLI entrypoint (interactive + classic)
-├── config.py          # Paths, model multipliers
-├── db.py              # DuckDB schema & connection
-├── discovery.py       # JSONL file discovery
-├── parser.py          # JSONL parsing
-├── ingest.py          # Event ingestion
-├── aggregator.py      # Pre-aggregation
-├── pipeline.py        # Scan orchestrator
-├── badges.py          # Shields.io badge export
-├── logging.py         # Loguru logging config
-├── tui.py             # Textual terminal dashboard
-└── dashboard/
-    ├── app.py         # Dash multi-page app
-    ├── assets/        # CSS & favicon
-    ├── pages/
-    │   ├── overview.py    # KPI + charts page
-    │   ├── explorer.py    # Search & filter page
-    │   ├── pipeline.py    # Pipeline runner page
-    │   ├── badges.py      # Badge generator page
-    │   └── settings.py    # Settings, logs & DB management
-    └── queries.py     # DB queries
+copilot-usage/
+├─ apps/
+│  ├─ cli/                        # Python CLI + Dash dashboard (PyPI package)
+│  │  ├─ src/copilot_usage/
+│  │  │  ├── __main__.py         # CLI entrypoint (interactive + classic)
+│  │  │  ├── config.py           # Paths, model multipliers
+│  │  │  ├── db.py               # DuckDB schema & connection
+│  │  │  ├── discovery.py        # JSONL file discovery
+│  │  │  ├── parser.py           # JSONL parsing
+│  │  │  ├── ingest.py           # Event ingestion
+│  │  │  ├── aggregator.py       # Pre-aggregation
+│  │  │  ├── pipeline.py         # Scan orchestrator
+│  │  │  ├── badges.py           # Shields.io badge export
+│  │  │  ├── logging.py          # Loguru logging config
+│  │  │  ├── tui.py              # Textual terminal dashboard
+│  │  │  └── dashboard/
+│  │  │      ├── app.py          # Dash multi-page app
+│  │  │      ├── queries.py      # DB queries
+│  │  │      ├── assets/         # CSS & favicon
+│  │  │      └── pages/          # Overview, Explorer, Pipeline, Badges, Settings
+│  │  ├─ pyproject.toml
+│  │  └─ copilot-usage.spec
+│  └─ vscode-extension/           # VS Code extension
+│     ├─ src/                     # TypeScript source
+│     ├─ package.json
+│     └─ ...
+├─ packages/
+│  └─ shared-schema/              # (future) JSON schema, scoring rules
+├─ docs/
+├─ scripts/
+│  ├─ build.ps1                   # Build standalone executable
+│  ├─ build-vsix.ps1              # Build VS Code extension
+│  └─ release.ps1                 # Version bump + tag + push
+├─ .github/workflows/
+└─ README.md
 ```
 
 ## Limitations
@@ -201,7 +215,7 @@ Token counts shown by this tool are **estimates** and may not match GitHub's off
 
 ## VS Code Extension
 
-A standalone VS Code extension is included under `vsc-extension/copilot-usage/`. It provides the same analytics directly inside the editor — no Python, no browser, no external server.
+A standalone VS Code extension is included under `apps/vscode-extension/`. It provides the same analytics directly inside the editor — no Python, no browser, no external server.
 
 - **Workspace View** — Token usage, model distribution, and daily chart scoped to the current project
 - **Global Dashboard** — Aggregated stats across all discovered workspaces with a workspaces breakdown table
@@ -214,7 +228,7 @@ A standalone VS Code extension is included under `vsc-extension/copilot-usage/`.
 ### Install
 
 ```bash
-cd vsc-extension/copilot-usage
+cd apps/vscode-extension
 npm install
 npx @vscode/vsce package --allow-missing-repository --skip-license
 ```

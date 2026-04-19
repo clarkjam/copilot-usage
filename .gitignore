@@ -34,7 +34,7 @@ Desktop.ini
 
 # PyInstaller
 *.spec
-!copilot-usage.spec
+!apps/cli/copilot-usage.spec
 
 # Logs
 *.log

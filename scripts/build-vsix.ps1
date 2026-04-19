@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $root      = Split-Path -Parent $scriptDir
-$extDir    = Join-Path $root "vsc-extension\copilot-usage"
+$extDir    = Join-Path $root "apps" "vscode-extension"
 
 Write-Host "`n=== Copilot Usage — VS Code Extension Build ===" -ForegroundColor Cyan
 
