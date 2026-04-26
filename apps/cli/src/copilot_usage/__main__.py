@@ -183,14 +183,28 @@ def _interactive():
 
     try:
         from InquirerPy import inquirer
+        from InquirerPy.prompts.rawlist import RawlistPrompt
         from InquirerPy.separator import Separator
     except ImportError:
         console.print("[yellow]InquirerPy not installed — falling back to non-interactive mode.[/yellow]")
         _classic_run(port=8050, no_browser=False, verbose=False, mode="run")
         return
 
+    class _QuickSelect(RawlistPrompt):
+        """RawlistPrompt that immediately confirms when a number key is pressed."""
+
+        def _on_rendered(self, _):
+            def _factory(choice):
+                @self.register_kb(str(choice["display_index"]))
+                def _(event):
+                    self.content_control.selected_choice_index = int(choice["actual_index"])
+                    self._handle_enter(event)
+            for choice in self.content_control.choices:
+                if not isinstance(choice["value"], Separator):
+                    _factory(choice)
+
     while True:
-        action = inquirer.select(
+        action = _QuickSelect(
             message="What would you like to do?",
             choices=[
                 {"name": "🚀  Scan & Launch Dashboard", "value": "run"},
@@ -201,11 +215,11 @@ def _interactive():
                 {"name": "⚙️   Settings", "value": "settings"},
                 {"name": "❌  Exit", "value": "exit"},
             ],
-            default="run",
+            default=1,
             pointer="❯",
             qmark="",
             amark="✓",
-            instruction="(↑/↓ arrow keys, Enter to select)",
+            instruction="(↑/↓ arrows · Enter · or press 1–6)",
         ).execute()
 
         if action == "exit":
@@ -230,7 +244,8 @@ def _interactive():
 
 def _settings_menu(console):
     """Interactive settings sub-menu."""
-    from InquirerPy import inquirer
+    from InquirerPy.prompts.rawlist import RawlistPrompt
+    from InquirerPy.separator import Separator
     from copilot_usage.config import APP_DATA_DIR, DB_PATH, VSCODE_STORAGE_ROOT
     from copilot_usage.logging import LOG_DIR
     from copilot_usage import __version__
@@ -248,16 +263,29 @@ def _settings_menu(console):
     console.print(info)
     console.print()
 
-    action = inquirer.select(
+    class _QuickSelect(RawlistPrompt):
+        def _on_rendered(self, _):
+            def _factory(choice):
+                @self.register_kb(str(choice["display_index"]))
+                def _(event):
+                    self.content_control.selected_choice_index = int(choice["actual_index"])
+                    self._handle_enter(event)
+            for choice in self.content_control.choices:
+                if not isinstance(choice["value"], Separator):
+                    _factory(choice)
+
+    action = _QuickSelect(
         message="Settings action:",
         choices=[
             {"name": "📂  Open app data folder", "value": "open_data"},
             {"name": "📂  Open log folder", "value": "open_logs"},
             {"name": "🔙  Back to main menu", "value": "back"},
         ],
+        default=1,
         pointer="❯",
         qmark="",
         amark="✓",
+        instruction="(↑/↓ arrows · Enter · or press 1–3)",
     ).execute()
 
     if action == "open_data":

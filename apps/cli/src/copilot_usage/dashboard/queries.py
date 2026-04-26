@@ -234,6 +234,139 @@ def session_list(limit: int = 200) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Detail modal queries
+# ---------------------------------------------------------------------------
+
+@_ttl_cache
+def requests_table(
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """Return all request events for the Requests detail modal, optionally date-filtered."""
+    from datetime import datetime, timezone
+
+    conditions: list[str] = []
+    params: list = []
+
+    if start_date:
+        conditions.append("e.timestamp_ms >= epoch_ms(?::TIMESTAMP)")
+        params.append(start_date)
+    if end_date:
+        conditions.append("e.timestamp_ms < epoch_ms((?::DATE + INTERVAL 1 DAY)::TIMESTAMP)")
+        params.append(end_date)
+
+    where = " AND ".join(conditions) if conditions else "TRUE"
+
+    con = _con()
+    rows = con.execute(f"""
+        SELECT
+            e.chat_session_id,
+            e.request_index,
+            e.request_id,
+            e.model_id,
+            e.timestamp_ms,
+            e.prompt_tokens,
+            e.output_tokens,
+            e.tool_call_rounds,
+            e.premium_estimate,
+            e.tokens_estimated,
+            e.data_source,
+            COALESCE(w.workspace_path, e.workspace_id) AS workspace_path
+        FROM events e
+        LEFT JOIN workspaces w ON w.workspace_id = e.workspace_id
+        WHERE {where}
+        ORDER BY e.timestamp_ms DESC NULLS LAST
+    """, params).fetchall()
+
+    result = []
+    for r in rows:
+        ts = r[4]
+        if ts:
+            dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+            date_str = dt.strftime("%Y-%m-%d %H:%M")
+        else:
+            date_str = "—"
+        sid = r[0] or ""
+        rid = r[2] or ""
+        result.append({
+            "chat_session_id": sid,
+            "session_short": (sid[:14] + "…") if len(sid) > 14 else sid,
+            "request_index": r[1],
+            "request_id": (rid[:14] + "…") if len(rid) > 14 else (rid or "—"),
+            "model_id": (r[3] or "").replace("copilot/", ""),
+            "date": date_str,
+            "timestamp_ms": ts or 0,
+            "prompt_tokens": r[5] or 0,
+            "output_tokens": r[6] or 0,
+            "tool_call_rounds": r[7] or 0,
+            "premium_estimate": round(r[8] or 0, 4),
+            "tokens_estimated": "Yes" if r[9] else "No",
+            "data_source": r[10] or "jsonl",
+            "workspace_path": r[11] or "",
+        })
+    return result
+
+
+@_ttl_cache
+def premium_requests_table(
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> list[dict]:
+    """Return events with premium_estimate > 0 for the Premium detail modal."""
+    from datetime import datetime, timezone
+
+    conditions: list[str] = ["e.premium_estimate > 0"]
+    params: list = []
+
+    if start_date:
+        conditions.append("e.timestamp_ms >= epoch_ms(?::TIMESTAMP)")
+        params.append(start_date)
+    if end_date:
+        conditions.append("e.timestamp_ms < epoch_ms((?::DATE + INTERVAL 1 DAY)::TIMESTAMP)")
+        params.append(end_date)
+
+    where = " AND ".join(conditions)
+
+    con = _con()
+    rows = con.execute(f"""
+        SELECT
+            e.timestamp_ms,
+            e.model_id,
+            COALESCE(w.workspace_path, e.workspace_id) AS workspace_path,
+            e.chat_session_id,
+            e.tool_call_rounds,
+            e.premium_estimate,
+            e.tokens_estimated,
+            e.data_source
+        FROM events e
+        LEFT JOIN workspaces w ON w.workspace_id = e.workspace_id
+        WHERE {where}
+        ORDER BY e.premium_estimate DESC, e.timestamp_ms DESC NULLS LAST
+    """, params).fetchall()
+
+    result = []
+    for r in rows:
+        ts = r[0]
+        if ts:
+            dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+            date_str = dt.strftime("%Y-%m-%d %H:%M")
+        else:
+            date_str = "—"
+        sid = r[3] or ""
+        result.append({
+            "date": date_str,
+            "model_id": (r[1] or "").replace("copilot/", ""),
+            "workspace_path": r[2] or "",
+            "session_short": (sid[:14] + "…") if len(sid) > 14 else sid,
+            "tool_call_rounds": r[4] or 0,
+            "premium_estimate": round(r[5] or 0, 2),
+            "tokens_estimated": "Yes" if r[6] else "No",
+            "data_source": r[7] or "jsonl",
+        })
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Explorer queries
 # ---------------------------------------------------------------------------
 

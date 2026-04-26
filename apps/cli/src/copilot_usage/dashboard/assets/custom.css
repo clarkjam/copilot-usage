@@ -47,18 +47,78 @@ body { background: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Seg
 }
 .filter-bar label { color: #8b949e; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
 
-/* Dark dropdowns */
-.dash-dark-dropdown .Select-control { background: #0d1117 !important; border-color: #30363d !important; }
-.dash-dark-dropdown .Select-value-label { color: #c9d1d9 !important; }
-.dash-dark-dropdown .Select-placeholder { color: #8b949e !important; }
-.dash-dark-dropdown .Select-menu-outer { background: #161b22 !important; border-color: #30363d !important; }
-.dash-dark-dropdown .VirtualizedSelectOption { color: #c9d1d9; }
-.dash-dark-dropdown .VirtualizedSelectFocusedOption { background: rgba(31,111,235,.3); }
+/* Dark dropdowns (Dash 2.17+ CSS-variable theming) */
+.dash-dark-dropdown {
+    --Dash-Fill-Inverse-Strong: #0d1117;
+    --Dash-Stroke-Strong: #30363d;
+    --Dash-Text-Strong: #e6edf3;
+    --Dash-Text-Weak: #8b949e;
+    --Dash-Text-Disabled: #8b949e;
+    --Dash-Fill-Interactive-Strong: #1f6feb;
+    --Dash-Fill-Interactive-Weak: rgba(31,111,235,.2);
+    --Dash-Fill-Disabled: #21262d;
+    --Dash-Shading-Strong: rgba(0,0,0,.5);
+    --Dash-Shading-Weak: rgba(0,0,0,.25);
+    color: #e6edf3;
+}
 
-/* Date picker dark mode */
-.DateInput_input { background: #0d1117 !important; color: #c9d1d9 !important; border-color: #30363d !important; font-size: 0.88rem; }
-.DateRangePickerInput { background: #0d1117 !important; border: 1px solid #30363d !important; border-radius: 6px; }
-.DateRangePickerInput_arrow_svg { fill: #8b949e; }
+/* Dropdown options menu — portalled to <body>, so scoped globally.
+   All dark-themed dropdowns in this app share the same palette. */
+.dash-dropdown-content {
+    --Dash-Fill-Inverse-Strong: #161b22;
+    --Dash-Stroke-Strong: #30363d;
+    --Dash-Text-Strong: #e6edf3;
+    --Dash-Text-Weak: #8b949e;
+    --Dash-Text-Disabled: #8b949e;
+    --Dash-Fill-Interactive-Strong: #1f6feb;
+    --Dash-Fill-Interactive-Weak: rgba(31,111,235,.2);
+    --Dash-Fill-Disabled: #21262d;
+    --Dash-Shading-Strong: rgba(0,0,0,.5);
+    --Dash-Shading-Weak: rgba(0,0,0,.25);
+    color: #e6edf3;
+    max-height: none !important;
+}
+.dash-dropdown-option:hover { background: rgba(31,111,235,.2); }
+.dash-dropdown-option:has(input[type='radio']:checked) { background: rgba(31,111,235,.15); color: #58a6ff; }
+
+/* Date picker dark mode (Dash 2.17+ CSS-variable theming) */
+.dash-dark-datepicker {
+    --Dash-Fill-Inverse-Strong: #0d1117;
+    --Dash-Stroke-Strong: #30363d;
+    --Dash-Text-Strong: #e6edf3;
+    --Dash-Text-Weak: #8b949e;
+    --Dash-Text-Disabled: #8b949e;
+    --Dash-Fill-Interactive-Strong: #1f6feb;
+    --Dash-Fill-Interactive-Weak: rgba(31,111,235,.2);
+    --Dash-Fill-Disabled: #21262d;
+    --Dash-Shading-Strong: rgba(0,0,0,.5);
+    --Dash-Shading-Weak: rgba(0,0,0,.25);
+    color: #e6edf3;
+}
+
+/* The .dash-datepicker parent uses background: var(--Dash-Fill-Inverse-Strong) but CSS
+   variables only cascade downward, so we must target the parent directly via :has() */
+.dash-datepicker:has(.dash-dark-datepicker) {
+    background-color: #0d1117 !important;
+    --Dash-Fill-Inverse-Strong: #0d1117;
+}
+
+/* Calendar popup and portal — portalled to <body>, scoped globally */
+.dash-datepicker-content,
+.dash-datepicker-calendar-wrapper,
+.dash-datepicker-portal {
+    --Dash-Fill-Inverse-Strong: #161b22;
+    --Dash-Stroke-Strong: #30363d;
+    --Dash-Text-Strong: #e6edf3;
+    --Dash-Text-Weak: #8b949e;
+    --Dash-Text-Disabled: #8b949e;
+    --Dash-Fill-Interactive-Strong: #1f6feb;
+    --Dash-Fill-Interactive-Weak: rgba(31,111,235,.2);
+    --Dash-Fill-Disabled: #21262d;
+    --Dash-Shading-Strong: rgba(0,0,0,.5);
+    --Dash-Shading-Weak: rgba(0,0,0,.25);
+    color: #e6edf3;
+}
 
 /* ---- Nav buttons ---- */
 .nav-pills .nav-link.nav-btn {
@@ -129,6 +189,74 @@ body { background: #0d1117; font-family: -apple-system, BlinkMacSystemFont, 'Seg
 .console-output::-webkit-scrollbar { width: 8px; }
 .console-output::-webkit-scrollbar-track { background: #010409; }
 .console-output::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+
+/* ---- Detail modals ---- */
+.modal-75 .modal-dialog {
+    max-width: 75%;
+    width: 75%;
+}
+.modal-75 .modal-content {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+}
+.modal-75 .modal-header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 16px 24px;
+}
+.modal-75 .modal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e6edf3;
+}
+.modal-75 .modal-body {
+    background: #0d1117;
+    padding: 20px 24px;
+}
+.modal-75 .btn-close {
+    filter: invert(1) grayscale(1) brightness(1.5);
+    opacity: 0.6;
+}
+.modal-75 .btn-close:hover { opacity: 1; }
+
+/* Modal date filter bar */
+.modal-filter-bar {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 14px 18px;
+}
+.modal-filter-label {
+    color: #8b949e;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+    display: block;
+}
+
+/* Active range label */
+.modal-range-label {
+    min-height: 1.5rem;
+}
+.modal-range-text {
+    color: #58a6ff;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+/* KPI card click affordance */
+.kpi-card[style*="pointer"] { outline: none; }
+.kpi-card[style*="pointer"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(88,166,255,.2);
+    border-color: rgba(88,166,255,.4);
+}
+.kpi-card[style*="pointer"]:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
 
 /* ---- Badge preview cards ---- */
 .badge-preview-card {

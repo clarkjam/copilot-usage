@@ -159,8 +159,11 @@ def empty_fig(msg: str):
     return fig
 
 
-def kpi_card(label: str, value: str, icon: str = "") -> dbc.Col:
-    """Build a single KPI card column."""
+def kpi_card(label: str, value: str, icon: str = "", card_id: str | None = None) -> dbc.Col:
+    """Build a single KPI card column. Pass card_id to make it clickable (opens a detail modal)."""
+    extra: dict = {}
+    if card_id:
+        extra = {"id": card_id, "n_clicks": 0, "style": {"cursor": "pointer"}}
     return dbc.Col(
         html.Div(
             [
@@ -169,6 +172,7 @@ def kpi_card(label: str, value: str, icon: str = "") -> dbc.Col:
                 html.Div(label, className="kpi-label mt-1"),
             ],
             className="kpi-card text-center px-3 py-2",
+            **extra,
         ),
         xs=6, sm=4, md=2,
     )
